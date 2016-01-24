@@ -52,6 +52,15 @@ static char launchNotificationKey;
     }
 }
 
+- (void)application:(UIApplication *)application didRegisterUserNotificationSettings:(UIUserNotificationSettings *)notificationSettings {
+    PushPlugin *pushHandler = [self getCommandInstance:@"PushNotification"];
+    
+    BOOL hasPermission = notificationSettings.types != UIUserNotificationTypeNone;
+    
+    [pushHandler didRegisterUserNotificationSettings:hasPermission];
+
+}
+
 - (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
     PushPlugin *pushHandler = [self getCommandInstance:@"PushNotification"];
     [pushHandler didRegisterForRemoteNotificationsWithDeviceToken:deviceToken];

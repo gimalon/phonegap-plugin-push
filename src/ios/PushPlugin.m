@@ -357,6 +357,27 @@
     [self failWithMessage:@"" withError:error];
 }
 
+- (void)didRegisterUserNotificationSettings:(BOOL)hasPermission
+{
+    
+    if (self.callbackId == nil) {
+        return;
+    }
+    
+     NSLog(@"Push Plugin asked for permission");
+    
+    if (!hasPermission) {
+        NSLog(@"Push Plugin permission denied");
+        
+        CDVPluginResult *commandResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"NOPERMISSION"];
+        [self.commandDelegate sendPluginResult:commandResult callbackId:self.callbackId];
+    } else {
+        NSLog(@"Push Plugin permission approved");
+    }
+
+    
+}
+
 - (void)notificationReceived {
     NSLog(@"Notification received");
 

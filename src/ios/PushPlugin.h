@@ -56,6 +56,8 @@
 
 - (void)didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken;
 - (void)didFailToRegisterForRemoteNotificationsWithError:(NSError *)error;
+- (void)didRegisterUserNotificationSettings:(BOOL)hasPermission;
+
 
 - (void)setNotificationMessage:(NSDictionary *)notification;
 - (void)notificationReceived;
