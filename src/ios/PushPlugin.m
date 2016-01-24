@@ -465,6 +465,31 @@
     [self.commandDelegate sendPluginResult:commandResult callbackId:command.callbackId];
 }
 
+- (void)showNotificationSettings:(CDVInvokedUrlCommand *)command {
+    @try
+    {
+        NSLog(@"Push Plugin");
+        BOOL canOpenSettings = (UIApplicationOpenSettingsURLString != NULL);
+        if (canOpenSettings)
+        {
+            NSURL *url = [NSURL URLWithString:UIApplicationOpenSettingsURLString];
+            [[UIApplication sharedApplication] openURL:url];
+            CDVPluginResult *commandResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+            [self.commandDelegate sendPluginResult:commandResult callbackId:command.callbackId];
+        } else {
+            NSLog(@"Push Plugin goto Settings not supported");
+            CDVPluginResult *commandResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Not Supported"];
+            [self.commandDelegate sendPluginResult:commandResult callbackId:command.callbackId];
+        }
+    }
+    @catch (NSException *exception)
+    {
+        NSLog(@"Push Plugin goto settings failed");
+        CDVPluginResult *commandResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Not Supported"];
+        [self.commandDelegate sendPluginResult:commandResult callbackId:command.callbackId];
+    }
+}
+
 - (void)hasPermission:(CDVInvokedUrlCommand *)command
 {
     BOOL enabled = NO;

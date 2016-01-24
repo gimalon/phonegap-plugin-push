@@ -236,6 +236,10 @@ module.exports = {
         exec(successCallback, errorCallback, 'PushNotification', 'hasPermission', []);
     },
 
+    showNotificationSettings: function(successCallback, errorCallback) {
+        exec(successCallback, errorCallback, 'PushNotification', 'showNotificationSettings', []);
+    },
+
     /**
      * PushNotification Object.
      *
