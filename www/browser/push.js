@@ -1,5 +1,5 @@
 /* global cordova:false */
-/* globals window */
+/* globals window, document, navigator */
 
 /*!
  * Module dependencies.
@@ -13,7 +13,7 @@ var exec = cordova.require('cordova/exec');
  * @param {Object} options to initiate Push Notifications.
  * @return {PushNotification} instance that can be monitored and cancelled.
  */
-
+var serviceWorker, subscription;
 var PushNotification = function(options) {
     this._handlers = {
         'registration': [],
@@ -31,40 +31,57 @@ var PushNotification = function(options) {
 
     // triggered on registration and notification
     var that = this;
-    var success = function(result) {
-        if (result && typeof result.registrationId !== 'undefined') {
-            that.emit('registration', result);
-        } else if (result && result.additionalData && typeof result.additionalData.actionCallback !== 'undefined') {
-            var executeFuctionOrEmitEventByName = function(callbackName, context, arg) {
-              var namespaces = callbackName.split('.');
-              var func = namespaces.pop();
-              for (var i = 0; i < namespaces.length; i++) {
-                context = context[namespaces[i]];
-              }
 
-              if (typeof context[func] === 'function') {
-                context[func].call(context, arg);
-              } else {
-                that.emit(callbackName, arg);
-              }
-            };
+    // Add manifest.json to main HTML file
+    var linkElement = document.createElement('link');
+    linkElement.rel = 'manifest';
+    linkElement.href = 'manifest.json';
+    document.getElementsByTagName('head')[0].appendChild(linkElement);
 
-            executeFuctionOrEmitEventByName(result.additionalData.actionCallback, window, result);
-        } else if (result) {
-            that.emit('notification', result);
-        }
-    };
+    if ('serviceWorker' in navigator && 'MessageChannel' in window) {
+        var result;
+        var channel = new MessageChannel();
+        channel.port1.onmessage = function(event) {
+            that.emit('notification', event.data);
+        };
 
-    // triggered on error
-    var fail = function(msg) {
-        var e = (typeof msg === 'string') ? new Error(msg) : msg;
-        that.emit('error', e);
-    };
+        navigator.serviceWorker.register('ServiceWorker.js').then(function() {
+            return navigator.serviceWorker.ready;
+        })
+        .then(function(reg) {
+            serviceWorker = reg;
+            reg.pushManager.subscribe({userVisibleOnly: true}).then(function(sub) {
+                subscription = sub;
+                result = { 'registrationId': sub.endpoint.substring(sub.endpoint.lastIndexOf('/') + 1) };
+                that.emit('registration', result);
 
-    // wait at least one process tick to allow event subscriptions
-    setTimeout(function() {
-        exec(success, fail, 'PushNotification', 'init', [options]);
-    }, 10);
+                // send encryption keys to push server
+                var xmlHttp = new XMLHttpRequest();
+                var xmlURL = (options.browser.pushServiceURL || 'http://push.api.phonegap.com/v1/push') + '/keys';
+                xmlHttp.open('POST', xmlURL, true);
+
+                var formData = new FormData();
+                formData.append('subscription', JSON.stringify(sub));
+
+                xmlHttp.send(formData);
+
+                navigator.serviceWorker.controller.postMessage(result, [channel.port2]);
+            }).catch(function(error) {
+                if (navigator.serviceWorker.controller === null) {
+                    // When you first register a SW, need a page reload to handle network operations
+                    window.location.reload();
+                    return;
+                }
+
+                throw new Error('Error subscribing for Push notifications.');
+            });
+        }).catch(function(error) {
+            console.log(error);
+            throw new Error('Error registering Service Worker');
+        });
+    } else {
+        throw new Error('Service Workers are not supported on your browser.');
+    }
 };
 
 /**
@@ -85,18 +102,30 @@ PushNotification.prototype.unregister = function(successCallback, errorCallback,
     }
 
     var that = this;
-    var cleanHandlersAndPassThrough = function() {
-        if (!options) {
-            that._handlers = {
-                'registration': [],
-                'notification': [],
-                'error': []
-            };
-        }
-        successCallback();
-    };
+    if (!options) {
+        that._handlers = {
+            'registration': [],
+            'notification': [],
+            'error': []
+        };
+    }
 
-    exec(cleanHandlersAndPassThrough, errorCallback, 'PushNotification', 'unregister', [options]);
+    if (serviceWorker) {
+        serviceWorker.unregister().then(function(isSuccess) {
+            if (isSuccess) {
+                var deviceID = subscription.endpoint.substring(subscription.endpoint.lastIndexOf('/') + 1);
+                var xmlHttp = new XMLHttpRequest();
+                var xmlURL = (that.options.browser.pushServiceURL || 'http://push.api.phonegap.com/v1/push')
+                    + '/keys/' + deviceID;
+                xmlHttp.open('DELETE', xmlURL, true);
+                xmlHttp.send();
+
+                successCallback();
+            } else {
+                errorCallback();
+            }
+        });
+    }
 };
 
 /**
@@ -119,7 +148,7 @@ PushNotification.prototype.subscribe = function(topic, successCallback, errorCal
         return;
     }
 
-    exec(successCallback, errorCallback, 'PushNotification', 'subscribe', [topic]);
+    successCallback();
 };
 
 /**
@@ -142,7 +171,7 @@ PushNotification.prototype.unsubscribe = function(topic, successCallback, errorC
         return;
     }
 
-    exec(successCallback, errorCallback, 'PushNotification', 'unsubscribe', [topic]);
+    successCallback();
 };
 
 /**
@@ -162,7 +191,7 @@ PushNotification.prototype.setApplicationIconBadgeNumber = function(successCallb
         return;
     }
 
-    exec(successCallback, errorCallback, 'PushNotification', 'setApplicationIconBadgeNumber', [{badge: badge}]);
+    successCallback();
 };
 
 /**
@@ -182,7 +211,7 @@ PushNotification.prototype.getApplicationIconBadgeNumber = function(successCallb
         return;
     }
 
-    exec(successCallback, errorCallback, 'PushNotification', 'getApplicationIconBadgeNumber', []);
+    successCallback();
 };
 
 /**
@@ -190,7 +219,6 @@ PushNotification.prototype.getApplicationIconBadgeNumber = function(successCallb
  */
 
 PushNotification.prototype.clearAllNotifications = function(successCallback, errorCallback) {
-    if (!successCallback) { successCallback = function() {}; }
     if (!errorCallback) { errorCallback = function() {}; }
 
     if (typeof errorCallback !== 'function')  {
@@ -203,13 +231,13 @@ PushNotification.prototype.clearAllNotifications = function(successCallback, err
         return;
     }
 
-    exec(successCallback, errorCallback, 'PushNotification', 'clearAllNotifications', []);
+    successCallback();
 };
 
 /**
  * Listen for an event.
  *
- * Any event is supported, but the following are built-in:
+ * The following events are supported:
  *
  *   - registration
  *   - notification
@@ -220,10 +248,9 @@ PushNotification.prototype.clearAllNotifications = function(successCallback, err
  */
 
 PushNotification.prototype.on = function(eventName, callback) {
-    if (!this._handlers.hasOwnProperty(eventName)) {
-        this._handlers[eventName] = [];
+    if (this._handlers.hasOwnProperty(eventName)) {
+        this._handlers[eventName].push(callback);
     }
-    this._handlers[eventName].push(callback);
 };
 
 /**
@@ -288,7 +315,7 @@ PushNotification.prototype.finish = function(successCallback, errorCallback, id)
         return;
     }
 
-    exec(successCallback, errorCallback, 'PushNotification', 'finish', [id]);
+    successCallback();
 };
 
 /*!
@@ -311,11 +338,11 @@ module.exports = {
     },
 
     hasPermission: function(successCallback, errorCallback) {
-        exec(successCallback, errorCallback, 'PushNotification', 'hasPermission', []);
+        successCallback(true);
     },
 
-    showNotificationSettings: function(successCallback, errorCallback) {
-        exec(successCallback, errorCallback, 'PushNotification', 'showNotificationSettings', []);
+    unregister: function(successCallback, errorCallback, options) {
+        PushNotification.unregister(successCallback, errorCallback, options);
     },
 
     /**
